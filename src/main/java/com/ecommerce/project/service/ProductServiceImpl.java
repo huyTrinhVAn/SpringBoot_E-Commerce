@@ -11,12 +11,15 @@ import com.ecommerce.project.repositories.ProductRepository;
 import org.modelmapper.ModelMapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.UUID;
+
 
 @Service
 public class ProductServiceImpl implements ProductService {
@@ -27,9 +30,10 @@ public class ProductServiceImpl implements ProductService {
     @Autowired
     private ModelMapper modelMapper;
     @Override
-    public ProductDTO addProduct(Long categoryId, Product product) {
+    public ProductDTO addProduct(Long categoryId, ProductDTO productDTO) {
         Category category = categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException("Category" , "id", categoryId));
+        Product product = modelMapper.map(productDTO, Product.class);
         product.setCategory(category);
         product.setImage("default.png");
         double specialPrice = product.getPrice() - ((product.getDiscount() * 0.01) * product.getPrice());
@@ -79,11 +83,12 @@ public class ProductServiceImpl implements ProductService {
         return productResponse;
     }
     @Override
-    public ProductDTO updateProduct( Long productId,Product product) {
+    public ProductDTO updateProduct(Long productId, ProductDTO productDTO) {
         // Get the existing the product form database
         Product productFromDb = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("Product" , "id", productId));
         // Update the product with the one in request body
+        Product product = modelMapper.map(productDTO, Product.class);
         productFromDb.setPrice(product.getPrice());
         productFromDb.setDiscount(product.getDiscount());
         productFromDb.setProductName(product.getProductName());
@@ -101,5 +106,40 @@ public class ProductServiceImpl implements ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("Product" , "id", productId));
         productRepository.delete(product);
         return modelMapper.map(product, ProductDTO.class);
+    }
+
+    @Override
+    public ProductDTO updateProductImage(Long productId, MultipartFile image) throws IOException {
+        // get the product from database
+        Product productFromDb = productRepository.findById(productId).
+                orElseThrow(() -> new ResourceNotFoundException("Product" , "id", productId));
+        // uplaod image to server
+        // get the file name of uploaded image
+        String path = "images/";
+        String filename = uploadImage(path , image);
+        // updating the new file to the product
+        productFromDb.setImage(filename);
+        // save product
+        Product savedProduct =  productRepository.save(productFromDb);
+        // return DTOO after mapping to DTO
+        return  modelMapper.map(savedProduct, ProductDTO.class);
+    }
+
+    private String uploadImage(String path, MultipartFile file) throws IOException {
+        // Get the file name/ original file
+        String originalFilename = file.getName();
+        // Generrate a  unique file name
+        String randomId = UUID.randomUUID().toString();
+        String fileName = randomId.concat(originalFilename.substring(originalFilename.lastIndexOf(".")));
+        String filePath = path + File.pathSeparator+fileName;
+
+        // check if path exist and create
+        File folder = new File(path);
+        if(!folder.exists()){
+            folder.mkdir();
+        }
+        Files.copy(file.getInputStream() , Paths.get(filePath));
+        // upload to server
+        return filePath;
     }
 }
